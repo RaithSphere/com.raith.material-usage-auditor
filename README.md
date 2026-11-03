@@ -17,3 +17,7 @@ The scan includes inactive child objects. It reads `sharedMaterials`, so it does
 Click **Select** on any texture row to select and ping that asset. Its Import Settings will appear in the Inspector, where you can change Max Size and apply the new setting.
 
 Use **Export CSV** when you need a portable report. Exporting does not change project assets.
+
+## AI Disclosure
+
+AI tools assisted with development and documentation of this package. The maintainer reviews and is responsible for the published code and content.
