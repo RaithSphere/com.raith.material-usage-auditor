@@ -3,7 +3,7 @@
   "displayName": "Material Usage Auditor",
   "version": "1.0.0",
   "unity": "2022.3",
-  "description": "Inspect every material and texture import Max Size used beneath a selected GameObject.",
+  "description": "Inspect materials, texture import limits, and Editor texture memory beneath a selected GameObject.",
   "keywords": [
     "material",
     "texture",

@@ -52,6 +52,47 @@ namespace Raith.MaterialUsageAuditor.Tests
         }
 
         [Test]
+        public void Scan_DeduplicatesEditorMemoryAcrossMaterialsSharingATexture()
+        {
+            var root = CreateGameObject("Root");
+            var texture = CreateTexture("Shared Texture");
+            var firstMaterial = CreateMaterial("First Material");
+            var secondMaterial = CreateMaterial("Second Material");
+            firstMaterial.mainTexture = texture;
+            firstMaterial.SetTexture("_BumpMap", texture);
+            secondMaterial.mainTexture = texture;
+            CreateRenderer("First", root.transform).sharedMaterial = firstMaterial;
+            CreateRenderer("Second", root.transform).sharedMaterial = secondMaterial;
+
+            var result = MaterialAuditScanner.Scan(root);
+            var textureMemory = result.Materials[0].Textures[0].MemoryBytes;
+
+            Assert.That(result.Materials[0].Textures, Has.Count.GreaterThan(1));
+            Assert.That(result.UniqueTextureMemoryBytes, Is.EqualTo(textureMemory));
+            Assert.That(result.UniqueTextureCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void BuildCsv_IncludesTimestampByteValuesAndUniqueTextureSummary()
+        {
+            var root = CreateGameObject("Root");
+            var material = CreateMaterial("Material");
+            var texture = CreateTexture("Texture");
+            material.mainTexture = texture;
+            CreateRenderer("Mesh", root.transform).sharedMaterial = material;
+
+            var result = MaterialAuditScanner.Scan(root);
+            var csv = MaterialUsageAuditorWindow.BuildCsv(result);
+
+            StringAssert.Contains("Scan timestamp (UTC)", csv);
+            StringAssert.Contains("Editor Memory (bytes)", csv);
+            StringAssert.Contains("Unique Texture Summary", csv);
+            StringAssert.Contains("Memory Status", csv);
+            if (result.Materials[0].Textures[0].MemoryBytes > 0)
+                StringAssert.Contains(result.Materials[0].Textures[0].MemoryBytes.ToString(), csv);
+        }
+
+        [Test]
         public void Scan_CountsNullMaterialSlotsWithoutCreatingEntries()
         {
             var root = CreateGameObject("Root");

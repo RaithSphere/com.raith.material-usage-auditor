@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Added Editor texture memory reporting with unavailable-value handling and deduplicated totals.
+- Added material sorting and filters, plus timestamped CSV exports with a unique-texture summary.
+- Added CI checks for package metadata, release tags, and archive contents before publishing.
+
 ## 1.0.0 - 2026-08-30
 
 - Added root GameObject scanning across active and inactive child renderers.

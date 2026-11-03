@@ -13,6 +13,7 @@ namespace Raith.MaterialUsageAuditor
         public int RendererCount { get; set; }
         public int EmptyMaterialSlotCount { get; set; }
         public string PlatformName { get; set; }
+        public DateTime ScannedAtUtc { get; set; }
 
         public int UniqueTextureCount => Materials
             .SelectMany(material => material.Textures)
@@ -26,6 +27,12 @@ namespace Raith.MaterialUsageAuditor
             .Where(texture => texture.Texture != null)
             .GroupBy(texture => texture.Texture.GetInstanceID())
             .Sum(group => group.First().MemoryBytes);
+
+        public int UnknownTextureMemoryCount => Materials
+            .SelectMany(material => material.Textures)
+            .Where(texture => texture.Texture != null)
+            .GroupBy(texture => texture.Texture.GetInstanceID())
+            .Count(group => group.First().MemoryBytes <= 0);
 
         public int LargeTextureCount(int threshold)
         {
@@ -87,7 +94,8 @@ namespace Raith.MaterialUsageAuditor
             var result = new MaterialAuditResult
             {
                 Root = root,
-                PlatformName = GetCurrentTexturePlatformName()
+                PlatformName = GetCurrentTexturePlatformName(),
+                ScannedAtUtc = DateTime.UtcNow
             };
             var materialLookup = new Dictionary<Material, MaterialAuditEntry>();
             var renderers = root.GetComponentsInChildren<Renderer>(true);

@@ -12,12 +12,16 @@ namespace Raith.MaterialUsageAuditor
     {
         private static readonly int[] ThresholdValues = { 1024, 2048, 4096, 8192 };
         private static readonly string[] ThresholdLabels = { "1K", "2K", "4K", "8K" };
+        private static readonly string[] SortOptions = { "Name", "Editor memory", "Max size", "Usage count" };
+        private static readonly string[] FilterOptions = { "All", "At / above limit", "No importer", "No asset path", "No textures" };
 
         private GameObject root;
         private MaterialAuditResult result;
         private Vector2 scrollPosition;
         private string search = string.Empty;
         private int thresholdIndex = 2;
+        private int sortIndex;
+        private int filterIndex;
         private readonly Dictionary<int, bool> expandedMaterials = new Dictionary<int, bool>();
 
         private GUIStyle titleStyle;
@@ -37,7 +41,7 @@ namespace Raith.MaterialUsageAuditor
         {
             var window = GetWindow<MaterialUsageAuditorWindow>();
             window.titleContent = new GUIContent("Material Audit", EditorGUIUtility.IconContent("Material Icon").image);
-            window.minSize = new Vector2(680f, 360f);
+            window.minSize = new Vector2(900f, 360f);
             window.Show();
         }
 
@@ -148,7 +152,10 @@ namespace Raith.MaterialUsageAuditor
             DrawSummaryDivider();
             DrawSummaryItem(result.UniqueTextureCount.ToString(), "textures");
             DrawSummaryDivider();
-            DrawSummaryItem(FormatMemory(result.UniqueTextureMemoryBytes), "texture memory");
+            var totalEditorMemory = result.UniqueTextureCount == 0
+                ? "—"
+                : FormatMemory(result.UniqueTextureMemoryBytes, result.UnknownTextureMemoryCount > 0);
+            DrawSummaryItem(totalEditorMemory, "Editor memory");
             DrawSummaryDivider();
             DrawSummaryItem(result.RendererCount.ToString(), "renderers");
             DrawSummaryDivider();
@@ -162,6 +169,13 @@ namespace Raith.MaterialUsageAuditor
                 EditorGUILayout.HelpBox(
                     $"Found {result.EmptyMaterialSlotCount} empty material slot{(result.EmptyMaterialSlotCount == 1 ? string.Empty : "s")}.",
                     MessageType.Info);
+            }
+
+            if (result.UnknownTextureMemoryCount > 0)
+            {
+                EditorGUILayout.HelpBox(
+                    $"Editor memory is unavailable for {result.UnknownTextureMemoryCount} unique texture{(result.UnknownTextureMemoryCount == 1 ? string.Empty : "s")}; the total excludes those textures.",
+                    MessageType.Warning);
             }
         }
 
@@ -180,6 +194,10 @@ namespace Raith.MaterialUsageAuditor
             GUILayout.Space(7f);
             EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
             search = GUILayout.TextField(search, EditorStyles.toolbarSearchField, GUILayout.MinWidth(180f));
+            EditorGUILayout.LabelField("Sort", EditorStyles.miniLabel, GUILayout.Width(28f));
+            sortIndex = EditorGUILayout.Popup(sortIndex, SortOptions, EditorStyles.toolbarPopup, GUILayout.Width(112f));
+            EditorGUILayout.LabelField("Show", EditorStyles.miniLabel, GUILayout.Width(32f));
+            filterIndex = EditorGUILayout.Popup(filterIndex, FilterOptions, EditorStyles.toolbarPopup, GUILayout.Width(132f));
             GUILayout.FlexibleSpace();
             EditorGUILayout.LabelField("Flag at", EditorStyles.miniLabel, GUILayout.Width(42f));
             var newThreshold = EditorGUILayout.Popup(thresholdIndex, ThresholdLabels, EditorStyles.toolbarPopup, GUILayout.Width(54f));
@@ -199,7 +217,7 @@ namespace Raith.MaterialUsageAuditor
 
         private void DrawResults()
         {
-            var visibleMaterials = result.Materials.Where(MatchesSearch).ToList();
+            var visibleMaterials = GetVisibleMaterials();
             if (visibleMaterials.Count == 0)
             {
                 var message = result.Materials.Count == 0
@@ -239,7 +257,14 @@ namespace Raith.MaterialUsageAuditor
                 expandedMaterials[materialId] = newExpanded;
 
             GUILayout.FlexibleSpace();
-            var materialSummary = $"{entry.Textures.Count} texture{(entry.Textures.Count == 1 ? string.Empty : "s")}  /  {FormatMemory(entry.UniqueTextureMemoryBytes)}  /  max {FormatMaxSizeOrDash(entry.LargestMaxSize)}";
+            var unknownMemoryCount = entry.Textures
+                .Where(texture => texture.Texture != null)
+                .GroupBy(texture => texture.Texture.GetInstanceID())
+                .Count(group => group.First().MemoryBytes <= 0);
+            var materialMemory = entry.Textures.Count == 0
+                ? "—"
+                : FormatMemory(entry.UniqueTextureMemoryBytes, unknownMemoryCount > 0);
+            var materialSummary = $"{entry.Textures.Count} texture{(entry.Textures.Count == 1 ? string.Empty : "s")}  /  {materialMemory}  /  max {FormatMaxSizeOrDash(entry.LargestMaxSize)}";
             EditorGUILayout.LabelField(
                 materialSummary,
                 entry.LargestMaxSize >= CurrentThreshold ? materialSummaryLargeStyle : materialSummaryStyle,
@@ -320,7 +345,7 @@ namespace Raith.MaterialUsageAuditor
             GUILayout.Space(42f);
             DrawTextureMetric("Source", FormatDimensions(entry.SourceWidth, entry.SourceHeight));
             DrawTextureMetric("Imported", FormatDimensions(entry.ImportedWidth, entry.ImportedHeight));
-            DrawTextureMetric("Memory", FormatMemory(entry.MemoryBytes));
+            DrawTextureMetric("Editor memory", FormatMemory(entry.MemoryBytes));
             DrawTextureMetric("Default max", entry.HasImporter ? FormatMaxSize(entry.DefaultMaxSize) : "Not imported");
             var effectiveValue = entry.HasImporter
                 ? FormatMaxSize(entry.EffectiveMaxSize) + (entry.HasPlatformOverride ? " override" : " default")
@@ -349,9 +374,49 @@ namespace Raith.MaterialUsageAuditor
                    || (entry.Material.shader != null && entry.Material.shader.name.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0)
                    || entry.Usages.Any(usage => usage.HierarchyPath.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0)
                    || entry.Textures.Any(texture =>
-                       texture.Texture.name.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0
+                       (texture.Texture != null && texture.Texture.name.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0)
                        || texture.PropertyDescription.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0
                        || texture.PropertyName.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        private List<MaterialAuditEntry> GetVisibleMaterials()
+        {
+            var materials = result.Materials
+                .Where(MatchesSearch)
+                .Where(MatchesFilter)
+                .ToList();
+
+            switch (sortIndex)
+            {
+                case 1:
+                    return materials.OrderByDescending(entry => entry.UniqueTextureMemoryBytes)
+                        .ThenBy(entry => entry.Material.name, StringComparer.OrdinalIgnoreCase).ToList();
+                case 2:
+                    return materials.OrderByDescending(entry => entry.LargestMaxSize)
+                        .ThenBy(entry => entry.Material.name, StringComparer.OrdinalIgnoreCase).ToList();
+                case 3:
+                    return materials.OrderByDescending(entry => entry.Usages.Count)
+                        .ThenBy(entry => entry.Material.name, StringComparer.OrdinalIgnoreCase).ToList();
+                default:
+                    return materials.OrderBy(entry => entry.Material.name, StringComparer.OrdinalIgnoreCase).ToList();
+            }
+        }
+
+        private bool MatchesFilter(MaterialAuditEntry entry)
+        {
+            switch (filterIndex)
+            {
+                case 1:
+                    return entry.Textures.Any(texture => texture.EffectiveMaxSize >= CurrentThreshold);
+                case 2:
+                    return entry.Textures.Any(texture => !texture.HasImporter);
+                case 3:
+                    return entry.Textures.Any(texture => string.IsNullOrEmpty(texture.AssetPath));
+                case 4:
+                    return entry.Textures.Count == 0;
+                default:
+                    return true;
+            }
         }
 
         private void Scan()
@@ -393,10 +458,32 @@ namespace Raith.MaterialUsageAuditor
             if (string.IsNullOrEmpty(path))
                 return;
 
-            var csv = new StringBuilder();
-            csv.AppendLine("Material,Shader,Material Asset,Renderer,Slot,Texture Property,Texture,Texture Asset,Source Size,Imported Size,Texture Memory,Default Max Size,Effective Max Size,Platform Override");
+            var csv = BuildCsv(result);
 
-            foreach (var material in result.Materials)
+            try
+            {
+                File.WriteAllText(path, csv.ToString(), new UTF8Encoding(true));
+                ShowNotification(new GUIContent("CSV report exported."));
+            }
+            catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException)
+            {
+                Debug.LogException(exception);
+                EditorUtility.DisplayDialog(
+                    "Could not export the audit",
+                    "Unity could not write to that location. Check that the folder is writable and the CSV is not open in another application, then choose Export CSV again.",
+                    "OK");
+            }
+        }
+
+        internal static string BuildCsv(MaterialAuditResult audit)
+        {
+            var csv = new StringBuilder();
+            AppendCsvRow(csv, "Scan timestamp (UTC)", audit.ScannedAtUtc.ToString("O"));
+            AppendCsvRow(csv, "Texture memory scope", $"Unity Editor runtime memory; bytes; build target context: {audit.PlatformName}; blank means unavailable");
+            csv.AppendLine();
+            csv.AppendLine("Material,Shader,Material Asset,Renderer,Slot,Texture Property,Texture,Texture Asset,Source Size,Imported Size,Editor Memory (bytes),Default Max Size,Effective Max Size,Platform Override");
+
+            foreach (var material in audit.Materials)
             {
                 var textures = material.Textures.Count > 0
                     ? material.Textures.Cast<TextureAuditEntry>().ToArray()
@@ -416,26 +503,34 @@ namespace Raith.MaterialUsageAuditor
                         texture?.AssetPath ?? string.Empty,
                         texture != null ? FormatDimensions(texture.SourceWidth, texture.SourceHeight) : string.Empty,
                         texture != null ? FormatDimensions(texture.ImportedWidth, texture.ImportedHeight) : string.Empty,
-                        texture != null ? FormatMemory(texture.MemoryBytes) : string.Empty,
+                        texture != null && texture.MemoryBytes > 0 ? texture.MemoryBytes.ToString() : string.Empty,
                         texture != null && texture.HasImporter ? texture.DefaultMaxSize.ToString() : string.Empty,
                         texture != null && texture.HasImporter ? texture.EffectiveMaxSize.ToString() : string.Empty,
                         texture != null && texture.HasPlatformOverride ? texture.PlatformName : string.Empty);
                 }
             }
 
-            try
+            csv.AppendLine();
+            AppendCsvRow(csv, "Unique Texture Summary");
+            csv.AppendLine("Texture,Texture Asset,Imported Size,Editor Memory (bytes),Memory Status");
+            var uniqueTextures = audit.Materials
+                .SelectMany(material => material.Textures)
+                .Where(texture => texture.Texture != null)
+                .GroupBy(texture => texture.Texture.GetInstanceID())
+                .Select(group => group.First())
+                .OrderBy(texture => texture.Texture.name, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var texture in uniqueTextures)
             {
-                File.WriteAllText(path, csv.ToString(), new UTF8Encoding(true));
-                ShowNotification(new GUIContent("CSV report exported."));
+                AppendCsvRow(csv,
+                    texture.Texture.name,
+                    texture.AssetPath,
+                    FormatDimensions(texture.ImportedWidth, texture.ImportedHeight),
+                    texture.MemoryBytes > 0 ? texture.MemoryBytes.ToString() : string.Empty,
+                    texture.MemoryBytes > 0 ? "Available" : "Unavailable");
             }
-            catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException)
-            {
-                Debug.LogException(exception);
-                EditorUtility.DisplayDialog(
-                    "Could not export the audit",
-                    "Unity could not write to that location. Check that the folder is writable and the CSV is not open in another application, then choose Export CSV again.",
-                    "OK");
-            }
+
+            return csv.ToString();
         }
 
         private static void AppendCsvRow(StringBuilder builder, params string[] values)
@@ -461,15 +556,16 @@ namespace Raith.MaterialUsageAuditor
             return width > 0 && height > 0 ? $"{width}×{height}" : "—";
         }
 
-        private static string FormatMemory(long bytes)
+        private static string FormatMemory(long bytes, bool partial = false)
         {
             if (bytes <= 0)
-                return "—";
+                return "Unavailable";
 
             var megabytes = bytes / (1024d * 1024d);
-            return megabytes >= 1d
+            var formatted = megabytes >= 1d
                 ? $"{megabytes:0.##} MB"
                 : $"{bytes / 1024d:0.#} KB";
+            return partial ? $"≥ {formatted}" : formatted;
         }
 
         private static string FormatMaxSize(int size)
