@@ -1,10 +1,11 @@
 # Changelog
 
-## Unreleased
+## 1.0.1 - 2026-11-06
 
 - Added Editor texture memory reporting with unavailable-value handling and deduplicated totals.
 - Added material sorting and filters, plus timestamped CSV exports with a unique-texture summary.
 - Added CI checks for package metadata, release tags, and archive contents before publishing.
+- Added controls to select and ping the GameObjects using each material.
 
 ## 1.0.0 - 2026-08-30
 
