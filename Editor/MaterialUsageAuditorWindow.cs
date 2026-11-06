@@ -269,6 +269,14 @@ namespace Raith.MaterialUsageAuditor
                 materialSummary,
                 entry.LargestMaxSize >= CurrentThreshold ? materialSummaryLargeStyle : materialSummaryStyle,
                 GUILayout.Width(245f));
+            using (new EditorGUI.DisabledScope(entry.Usages.Count == 0))
+            {
+                if (GUILayout.Button(
+                        new GUIContent("Select Object", "Select the first object using this material. Expand the material to select a different object."),
+                        EditorStyles.miniButton,
+                        GUILayout.Width(96f)))
+                    SelectObject(entry.Usages[0].Renderer.gameObject);
+            }
             if (GUILayout.Button("Select Material", EditorStyles.miniButton, GUILayout.Width(120f)))
                 Ping(entry.Material);
             EditorGUILayout.EndHorizontal();
@@ -303,7 +311,7 @@ namespace Raith.MaterialUsageAuditor
                 var usageLabel = $"{usage.HierarchyPath}  /  material slot {usage.MaterialSlot}";
                 EditorGUILayout.LabelField(new GUIContent(usageLabel, usageLabel), pathStyle);
                 if (GUILayout.Button("Select", EditorStyles.miniButton, GUILayout.Width(52f)))
-                    Selection.activeObject = usage.Renderer.gameObject;
+                    SelectObject(usage.Renderer.gameObject);
                 EditorGUILayout.EndHorizontal();
             }
 
@@ -583,6 +591,12 @@ namespace Raith.MaterialUsageAuditor
         private static void Ping(UnityEngine.Object target)
         {
             Selection.activeObject = target;
+            EditorGUIUtility.PingObject(target);
+        }
+
+        private static void SelectObject(GameObject target)
+        {
+            Selection.activeGameObject = target;
             EditorGUIUtility.PingObject(target);
         }
 

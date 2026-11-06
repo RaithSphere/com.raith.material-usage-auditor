@@ -1,7 +1,7 @@
 {
   "name": "com.raith.material-usage-auditor",
   "displayName": "Material Usage Auditor",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "unity": "2022.3",
   "description": "Inspect materials, texture import limits, and Editor texture memory beneath a selected GameObject.",
   "keywords": [

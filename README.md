@@ -10,7 +10,7 @@ Choose **Tools > Material Usage Auditor**.
 
 1. Assign a root GameObject, or select one in the Hierarchy and click **Use Selection**.
 2. Click **Scan Model**.
-3. Expand a material to see its renderer slots and assigned texture properties.
+3. Click **Select Object** on a material row to select the first GameObject using it, or expand the material to choose a specific renderer object and see its assigned texture properties.
 
 The scan includes inactive child objects. It reads `sharedMaterials`, so it does not instantiate materials or change the scene. Texture rows show source dimensions, imported dimensions, the default Max Size, the effective Max Size for the active build target, and Unity's runtime memory size for the texture in the Editor. The summary reports a deduplicated Editor-memory total; unavailable readings are called out and excluded. This is the current Editor representation, not a build-target memory prediction, and can differ on a device. An active platform override is labelled explicitly.
 
